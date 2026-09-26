@@ -1,0 +1,1147 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Burro #8585 — Panel de Control</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<style>
+  :root {
+    --bg:        #0d1117;
+    --surface:   #161b22;
+    --border:    #21262d;
+    --text:      #e6edf3;
+    --muted:     #7d8590;
+    --green:     #3fb950;
+    --yellow:    #d29922;
+    --red:       #f85149;
+    --blue:      #58a6ff;
+    --purple:    #bc8cff;
+    --orange:    #ffa657;
+    --accent:    #c6a44e;   /* amarillo tierra — color del Burro */
+    --mono:      'Space Mono', monospace;
+    --sans:      'Space Grotesk', sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 14px;
+    line-height: 1.5;
+    min-height: 100vh;
+  }
+
+  /* ── Header ── */
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 24px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+
+  .header-left { display: flex; align-items: center; gap: 12px; }
+
+  .burro-icon {
+    width: 36px; height: 36px;
+    background: var(--accent);
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+  }
+
+  .header-title { font-size: 16px; font-weight: 600; }
+  .header-serial { font-family: var(--mono); color: var(--accent); font-size: 13px; }
+
+  .header-right { display: flex; align-items: center; gap: 16px; }
+
+  .poll-indicator {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 12px; color: var(--muted);
+    font-family: var(--mono);
+  }
+
+  .dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--green);
+    animation: pulse 2s infinite;
+  }
+  .dot.error { background: var(--red); animation: none; }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+
+  /* ── Layout ── */
+  main {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 24px;
+    display: grid;
+    grid-template-columns: repeat(12, 1fr);
+    gap: 16px;
+  }
+
+  /* ── Cards ── */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: var(--accent);
+    opacity: 0;
+    transition: opacity .2s;
+  }
+  .card:hover::before { opacity: 1; }
+
+  .card-label {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 12px;
+  }
+
+  .card-value {
+    font-family: var(--mono);
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--text);
+    line-height: 1;
+  }
+
+  .card-sub {
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: 4px;
+    font-family: var(--mono);
+  }
+
+  /* Column spans */
+  .col-3  { grid-column: span 3; }
+  .col-4  { grid-column: span 4; }
+  .col-6  { grid-column: span 6; }
+  .col-8  { grid-column: span 8; }
+  .col-12 { grid-column: span 12; }
+
+  /* ── Battery ── */
+  .battery-bar-wrap {
+    height: 8px;
+    background: var(--border);
+    border-radius: 4px;
+    margin: 12px 0 8px;
+    overflow: hidden;
+  }
+
+  .battery-bar {
+    height: 100%;
+    border-radius: 4px;
+    transition: width .6s ease;
+    background: var(--green);
+  }
+  .battery-bar.warn  { background: var(--yellow); }
+  .battery-bar.crit  { background: var(--red); }
+
+  .battery-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-top: 12px;
+  }
+
+  .stat-item { }
+  .stat-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
+  .stat-val   { font-family: var(--mono); font-size: 14px; font-weight: 600; margin-top: 2px; }
+
+  /* ── Status badges ── */
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 600;
+    font-family: var(--mono);
+  }
+  .badge.green  { background: rgba(63,185,80,.15);  color: var(--green);  }
+  .badge.yellow { background: rgba(210,153,34,.15); color: var(--yellow); }
+  .badge.red    { background: rgba(248,81,73,.15);  color: var(--red);    }
+  .badge.blue   { background: rgba(88,166,255,.15); color: var(--blue);   }
+  .badge.muted  { background: rgba(125,133,144,.15);color: var(--muted);  }
+
+  /* ── GPS / Localization ── */
+  .gps-coords {
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--blue);
+    margin: 10px 0;
+  }
+
+  .gps-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 8px;
+    margin-top: 10px;
+  }
+
+  /* ── Mission ── */
+  .mission-progress-wrap {
+    height: 6px;
+    background: var(--border);
+    border-radius: 3px;
+    margin: 12px 0 8px;
+    overflow: hidden;
+  }
+  .mission-progress-bar {
+    height: 100%;
+    border-radius: 3px;
+    background: var(--purple);
+    transition: width .6s ease;
+  }
+
+  .task-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px;
+    border-radius: 8px;
+    margin-top: 8px;
+    background: rgba(255,255,255,.03);
+    border: 1px solid var(--border);
+  }
+  .task-icon {
+    width: 22px; height: 22px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; flex-shrink: 0;
+  }
+  .task-icon.done     { background: rgba(63,185,80,.2);  color: var(--green); }
+  .task-icon.active   { background: rgba(188,140,255,.2);color: var(--purple); }
+  .task-icon.pending  { background: var(--border);        color: var(--muted); }
+
+  .task-name  { font-size: 13px; font-weight: 500; }
+  .task-type  { font-size: 10px; color: var(--muted); font-family: var(--mono); }
+
+  /* ── Platform ── */
+  .platform-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+  }
+  .platform-row:last-child { border-bottom: none; }
+  .platform-key { color: var(--muted); }
+  .platform-val { font-family: var(--mono); font-size: 12px; }
+
+  /* ── Motion / Obstacles ── */
+  .flag-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 0;
+    border-bottom: 1px solid rgba(255,255,255,.05);
+    font-size: 13px;
+  }
+  .flag-row:last-child { border-bottom: none; }
+
+  /* ── Velocity ── */
+  .velocity-display {
+    display: flex;
+    gap: 16px;
+    margin-top: 8px;
+  }
+  .vel-box {
+    flex: 1;
+    background: rgba(255,255,255,.04);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px;
+    text-align: center;
+  }
+  .vel-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
+  .vel-val   { font-family: var(--mono); font-size: 22px; font-weight: 700; margin-top: 4px; }
+
+  /* ── Empty/loading states ── */
+  .loading {
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .spinner {
+    width: 14px; height: 14px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin .8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .no-data { color: var(--muted); font-size: 12px; font-family: var(--mono); }
+
+  /* ── Section heading ── */
+  .section-heading {
+    grid-column: span 12;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding-top: 8px;
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+  }
+  .section-heading::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  /* ── Mapa ── */
+  #burro-map {
+    height: 480px;
+    border-radius: 8px;
+    background: #0d1117;
+    z-index: 1;
+  }
+
+  /* Forzar que Leaflet no tape el header sticky */
+  .leaflet-pane { z-index: 1 !important; }
+  .leaflet-top, .leaflet-bottom { z-index: 2 !important; }
+
+  .burro-marker-wrap {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    background: var(--accent);
+    border: 3px solid #fff;
+    border-radius: 50%;
+    box-shadow: 0 2px 8px rgba(0,0,0,.6);
+    font-size: 18px;
+    transition: transform .4s ease;
+  }
+
+  .map-legend {
+    display: flex;
+    gap: 16px;
+    margin-top: 10px;
+    flex-wrap: wrap;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    color: var(--muted);
+  }
+  .legend-dot {
+    width: 10px; height: 10px; border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .legend-line {
+    width: 20px; height: 3px;
+    flex-shrink: 0;
+    border-radius: 2px;
+  }
+
+  /* ── Responsive ── */
+  @media (max-width: 900px) {
+    .col-3, .col-4, .col-6 { grid-column: span 6; }
+    .col-8 { grid-column: span 12; }
+  }
+  @media (max-width: 600px) {
+    .col-3, .col-4, .col-6, .col-8 { grid-column: span 12; }
+    main { padding: 12px; gap: 12px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-left">
+    <div class="burro-icon">🤖</div>
+    <div>
+      <div class="header-title">Burro BOSS Dashboard</div>
+      <div class="header-serial">UNIT #8585</div>
+    </div>
+  </div>
+  <div class="header-right">
+    <div class="poll-indicator">
+      <div class="dot" id="dot"></div>
+      <span id="last-poll-label">Conectando...</span>
+    </div>
+  </div>
+</header>
+
+<main>
+
+  <!-- ── BATERÍA ───────────────────────────────────────── -->
+  <div class="section-heading">⚡ Batería</div>
+
+  <div class="card col-4" id="card-battery-pct">
+    <div class="card-label">Carga</div>
+    <div class="loading"><div class="spinner"></div> Cargando...</div>
+  </div>
+
+  <div class="card col-8" id="card-battery-detail">
+    <div class="card-label">Detalle eléctrico</div>
+    <div class="loading"><div class="spinner"></div> Cargando...</div>
+  </div>
+
+  <!-- ── GPS / LOCALIZACIÓN ────────────────────────────── -->
+  <div class="section-heading">📡 Localización GPS</div>
+
+  <div class="card col-6" id="card-gps-fix">
+    <div class="card-label">Posición &amp; Heading</div>
+    <div class="loading"><div class="spinner"></div> Cargando...</div>
+  </div>
+
+  <div class="card col-6" id="card-gps-stats">
+    <div class="card-label">Calidad de señal</div>
+    <div class="loading"><div class="spinner"></div> Cargando...</div>
+  </div>
+
+  <!-- ── VELOCIDAD ─────────────────────────────────────── -->
+  <div class="section-heading">🏃 Velocidad</div>
+
+  <div class="card col-6" id="card-velocity">
+    <div class="card-label">Velocidad actual</div>
+    <div class="loading"><div class="spinner"></div> Cargando...</div>
+  </div>
+
+  <div class="card col-6" id="card-motion">
+    <div class="card-label">Motion Governor</div>
+    <div class="loading"><div class="spinner"></div> Cargando...</div>
+  </div>
+
+  <!-- ── OBSTÁCULOS & SEGURIDAD ────────────────────────── -->
+  <div class="section-heading">🛡️ Seguridad</div>
+
+  <div class="card col-4" id="card-obstacles">
+    <div class="card-label">Detección de obstáculos</div>
+    <div class="loading"><div class="spinner"></div> Cargando...</div>
+  </div>
+
+  <div class="card col-4" id="card-driveflags">
+    <div class="card-label">Drive System Flags</div>
+    <div class="loading"><div class="spinner"></div> Cargando...</div>
+  </div>
+
+  <div class="card col-4" id="card-failsafe">
+    <div class="card-label">Fail Safe</div>
+    <div class="loading"><div class="spinner"></div> Cargando...</div>
+  </div>
+
+  <!-- ── MISIÓN ─────────────────────────────────────────── -->
+  <div class="section-heading">🎯 Misión activa</div>
+
+  <div class="card col-12" id="card-mission">
+    <div class="card-label">Estado de misión</div>
+    <div class="loading"><div class="spinner"></div> Cargando...</div>
+  </div>
+
+  <!-- ── MAPA & PLATAFORMA ──────────────────────────────── -->
+  <div class="section-heading">🗺️ Mapa &amp; Plataforma</div>
+
+  <div class="card col-6" id="card-network">
+    <div class="card-label">Mapa cargado</div>
+    <div class="loading"><div class="spinner"></div> Cargando...</div>
+  </div>
+
+  <div class="card col-6" id="card-platform">
+    <div class="card-label">Plataforma</div>
+    <div class="loading"><div class="spinner"></div> Cargando...</div>
+  </div>
+
+  <!-- ── MAPA EN TIEMPO REAL ───────────────────────────────── -->
+  <div class="section-heading">🗺️ Posición en tiempo real — Fundo Valerie ICA</div>
+
+  <div class="card col-12">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <div class="card-label" style="margin:0">Mapa de ruta + posición del robot</div>
+      <div id="map-status" style="font-size:11px;color:var(--muted);font-family:var(--mono)">Cargando mapa...</div>
+    </div>
+    <div id="burro-map"></div>
+    <div class="map-legend">
+      <div class="legend-item">
+        <div class="legend-line" style="background:#c6a44e"></div>
+        Rutas
+      </div>
+      <div class="legend-item">
+        <div class="legend-dot" style="background:#58a6ff"></div>
+        Destinos
+      </div>
+      <div class="legend-item">
+        <div class="legend-dot" style="background:#3fb950"></div>
+        Trayectoria reciente
+      </div>
+      <div class="legend-item">
+        <div class="legend-dot" style="background:#c6a44e;border:2px solid white;border-radius:50%"></div>
+        Burro #8585
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<script>
+// ── helpers ──────────────────────────────────────────────────────────────────
+const $ = id => document.getElementById(id);
+const fmt = (n, dec=1) => n != null ? Number(n).toFixed(dec) : '—';
+
+function badge(text, color='muted') {
+  return `<span class="badge ${color}">● ${text}</span>`;
+}
+
+function colorForBattery(pct) {
+  if (pct > 0.5) return 'green';
+  if (pct > 0.2) return 'yellow';
+  return 'red';
+}
+
+function barClass(pct) {
+  if (pct > 0.5) return '';
+  if (pct > 0.2) return 'warn';
+  return 'crit';
+}
+
+function ts(isoStr) {
+  if (!isoStr) return '—';
+  const d = new Date(isoStr);
+  return d.toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+
+function elapsed(isoStr) {
+  if (!isoStr) return '';
+  const sec = Math.round((Date.now() - new Date(isoStr)) / 1000);
+  if (sec < 60) return `hace ${sec}s`;
+  return `hace ${Math.round(sec/60)}min`;
+}
+
+// ── renderers ────────────────────────────────────────────────────────────────
+
+function renderBattery(battery) {
+  if (!battery) {
+    $('card-battery-pct').innerHTML    = `<div class="card-label">Carga</div><span class="no-data">Sin datos</span>`;
+    $('card-battery-detail').innerHTML = `<div class="card-label">Detalle eléctrico</div><span class="no-data">Sin datos</span>`;
+    return;
+  }
+
+  const pct = battery.percentage ?? 0;
+  const pctPx = Math.round(pct * 100);
+  const col = colorForBattery(pct);
+
+  $('card-battery-pct').innerHTML = `
+    <div class="card-label">Carga</div>
+    <div class="card-value" style="color:var(--${col})">${pctPx}<span style="font-size:16px">%</span></div>
+    <div class="battery-bar-wrap">
+      <div class="battery-bar ${barClass(pct)}" style="width:${pctPx}%"></div>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      ${badge(battery.is_charging ? 'Cargando' : 'En uso', battery.is_charging ? 'blue' : col)}
+      ${battery.alarm ? badge('⚠ ALARMA', 'red') : ''}
+    </div>
+    ${battery.alarm_reason ? `<div class="card-sub" style="color:var(--red);margin-top:8px">${battery.alarm_reason}</div>` : ''}
+  `;
+
+  $('card-battery-detail').innerHTML = `
+    <div class="card-label">Detalle eléctrico</div>
+    <div class="battery-grid">
+      <div class="stat-item">
+        <div class="stat-label">Voltaje</div>
+        <div class="stat-val">${fmt(battery.voltage)} V</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-label">Corriente</div>
+        <div class="stat-val">${fmt(battery.current)} A</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-label">Potencia</div>
+        <div class="stat-val">${fmt(battery.power)} W</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-label">Energía consumida</div>
+        <div class="stat-val">${fmt(battery.consumed_energy)} Wh</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-label">Tiempo restante</div>
+        <div class="stat-val">${fmt(battery.time_remaining_min, 0)} min</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-label">Rango restante</div>
+        <div class="stat-val">${fmt(battery.remaining_range, 0)} m</div>
+      </div>
+    </div>
+  `;
+}
+
+function renderLocalization(loc) {
+  if (!loc) {
+    $('card-gps-fix').innerHTML   = `<div class="card-label">Posición &amp; Heading</div><span class="no-data">Sin datos</span>`;
+    $('card-gps-stats').innerHTML = `<div class="card-label">Calidad de señal</div><span class="no-data">Sin datos</span>`;
+    return;
+  }
+
+  const fix   = loc.fix   || {};
+  const stats = loc.stats || {};
+
+  const fixColor = { Fixed:'green', Float:'yellow', '3D Fix':'yellow', None:'red' }[stats.fix_status] ?? 'muted';
+  const locColor = { good:'green', uncertain:'yellow', lost:'red' }[stats.localization_status] ?? 'muted';
+
+  $('card-gps-fix').innerHTML = `
+    <div class="card-label">Posición &amp; Heading</div>
+    <div class="gps-coords">
+      ${fix.latitude != null ? fix.latitude.toFixed(6) : '—'}, ${fix.longitude != null ? fix.longitude.toFixed(6) : '—'}
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+      ${badge(stats.fix_status ?? '—', fixColor)}
+      ${badge(stats.localization_status ?? '—', locColor)}
+    </div>
+    <div class="stat-item">
+      <div class="stat-label">Heading</div>
+      <div class="stat-val">${fmt(loc.heading, 1)}°</div>
+    </div>
+    <div class="card-sub" style="margin-top:10px">Actualizado ${ts(loc.timestamp)}</div>
+  `;
+
+  $('card-gps-stats').innerHTML = `
+    <div class="card-label">Calidad de señal</div>
+    <div class="gps-grid">
+      <div class="stat-item">
+        <div class="stat-label">Satélites</div>
+        <div class="stat-val">${stats.satellite_count ?? '—'}</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-label">Confianza GPS</div>
+        <div class="stat-val">${stats.gps_confidence != null ? Math.round(stats.gps_confidence*100)+'%' : '—'}</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-label">RTK radio</div>
+        <div class="stat-val">${stats.radio_rtk != null ? stats.radio_rtk+' dBm' : '—'}</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-label">Base station</div>
+        <div class="stat-val">${stats.base_station_id ?? '—'}</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-label">Dist. a base</div>
+        <div class="stat-val">${fmt(stats.base_station_distance, 0)} m</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-label">Señal</div>
+        <div class="stat-val">${stats.signal_strength ?? '—'}</div>
+      </div>
+    </div>
+  `;
+}
+
+function renderVelocity(vel) {
+  $('card-velocity').innerHTML = `
+    <div class="card-label">Velocidad actual</div>
+    ${!vel ? '<span class="no-data">Sin datos</span>' : `
+    <div class="velocity-display">
+      <div class="vel-box">
+        <div class="vel-label">Lineal (X)</div>
+        <div class="vel-val" style="color:var(--blue)">${fmt(vel.linear_x,2)}</div>
+        <div class="card-sub">m/s</div>
+      </div>
+      <div class="vel-box">
+        <div class="vel-label">Angular (Z)</div>
+        <div class="vel-val" style="color:var(--purple)">${fmt(vel.angular_z,3)}</div>
+        <div class="card-sub">rad/s</div>
+      </div>
+    </div>`}
+  `;
+}
+
+function renderMotion(mg) {
+  if (!mg) {
+    $('card-motion').innerHTML = `<div class="card-label">Motion Governor</div><span class="no-data">Sin datos</span>`;
+    return;
+  }
+
+  const stateColor = { OK:'green', SLOWDOWN:'yellow', STOP:'red' }[mg.state] ?? 'muted';
+
+  $('card-motion').innerHTML = `
+    <div class="card-label">Motion Governor</div>
+    <div style="margin:8px 0">${badge(mg.state, stateColor)}</div>
+    <div class="flag-row">
+      <span>Movimiento autónomo</span>
+      ${mg.autonomous_motion_enabled ? badge('Habilitado','green') : badge('Deshabilitado','red')}
+    </div>
+    ${mg.state_reasons && mg.state_reasons.length ? `
+      <div style="margin-top:10px">
+        <div class="stat-label">Razones activas</div>
+        <div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:4px">
+          ${mg.state_reasons.map(r => badge(r,'yellow')).join('')}
+        </div>
+      </div>` : ''}
+    <div class="card-sub" style="margin-top:10px">Actualizado ${ts(mg.timestamp)}</div>
+  `;
+}
+
+function renderObstacles(obs) {
+  if (!obs) {
+    $('card-obstacles').innerHTML = `<div class="card-label">Detección de obstáculos</div><span class="no-data">Sin datos</span>`;
+    return;
+  }
+
+  const stateColor = {
+    NO_OBSTACLE:'green', DETECTED_OBSTACLE:'red',
+    DETECTED_SLOWDOWN:'yellow', FAULT:'red'
+  }[obs.state] ?? 'muted';
+
+  const label = {
+    NO_OBSTACLE:'Libre', DETECTED_OBSTACLE:'OBSTÁCULO',
+    DETECTED_SLOWDOWN:'Reduciendo vel.', FAULT:'FALLO SENSOR'
+  }[obs.state] ?? obs.state;
+
+  $('card-obstacles').innerHTML = `
+    <div class="card-label">Detección de obstáculos</div>
+    <div style="margin:10px 0">${badge(label, stateColor)}</div>
+    ${obs.obstacle_stop_types.length ? `
+      <div class="stat-label">Causa de stop</div>
+      <div style="margin-top:4px">${obs.obstacle_stop_types.map(t => badge(t,'red')).join(' ')}</div>` : ''}
+    ${obs.obstacle_slowdown_types.length ? `
+      <div class="stat-label" style="margin-top:8px">Causa de slowdown</div>
+      <div style="margin-top:4px">${obs.obstacle_slowdown_types.map(t => badge(t,'yellow')).join(' ')}</div>` : ''}
+    <div class="card-sub" style="margin-top:10px">Actualizado ${ts(obs.timestamp)}</div>
+  `;
+}
+
+function renderDriveFlags(flags) {
+  if (!flags) {
+    $('card-driveflags').innerHTML = `<div class="card-label">Drive System Flags</div><span class="no-data">Sin datos</span>`;
+    return;
+  }
+
+  $('card-driveflags').innerHTML = `
+    <div class="card-label">Drive System Flags</div>
+    <div class="flag-row">
+      <span>Detenido</span>
+      ${flags.is_stopped ? badge('Sí','yellow') : badge('No','green')}
+    </div>
+    <div class="flag-row">
+      <span>E-Stop activo</span>
+      ${flags.is_emergency_stopped ? badge('ACTIVADO','red') : badge('Normal','green')}
+    </div>
+    <div class="flag-row">
+      <span>Position Hold</span>
+      ${flags.is_position_hold ? badge('Activo','blue') : badge('No','muted')}
+    </div>
+  `;
+}
+
+function renderFailSafe(fs) {
+  if (!fs) {
+    $('card-failsafe').innerHTML = `<div class="card-label">Fail Safe</div><span class="no-data">Sin datos</span>`;
+    return;
+  }
+
+  const hasFaults = fs.active_faults && fs.active_faults.length > 0;
+
+  $('card-failsafe').innerHTML = `
+    <div class="card-label">Fail Safe</div>
+    <div style="margin:8px 0">${hasFaults ? badge('FALLAS ACTIVAS','red') : badge('Normal','green')}</div>
+    ${hasFaults ? `
+      <div class="stat-label">Fallas</div>
+      <div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:4px">
+        ${fs.active_faults.map(f => badge(f,'red')).join('')}
+      </div>` : ''}
+    ${fs.active_additional_actions && fs.active_additional_actions.length ? `
+      <div class="stat-label" style="margin-top:8px">Acciones adicionales</div>
+      <div style="margin-top:4px">${fs.active_additional_actions.map(a => badge(a,'yellow')).join(' ')}</div>` : ''}
+    <div class="flag-row" style="margin-top:10px">
+      <span>Severidad</span>
+      <span class="platform-val">${fs.enforced_action_severity_level ?? '—'}</span>
+    </div>
+  `;
+}
+
+function renderMission(mission) {
+  if (!mission) {
+    $('card-mission').innerHTML = `
+      <div class="card-label">Misión activa</div>
+      <div style="color:var(--muted);font-size:13px">Sin misión activa en este momento.</div>
+    `;
+    return;
+  }
+
+  const pct = Math.round((mission.overall_progress ?? 0) * 100);
+  const missionName = mission.mission?.name ?? 'Misión sin nombre';
+
+  const taskIcon = (status) => {
+    if (status === 'COMPLETED') return '<div class="task-icon done">✓</div>';
+    if (status === 'IN_PROGRESS') return '<div class="task-icon active">▶</div>';
+    return '<div class="task-icon pending">○</div>';
+  };
+
+  const allTasks = [
+    ...(mission.completed_tasks || []).map(t => ({...t, _status:'COMPLETED'})),
+    mission.current_task ? {...mission.current_task, _status:'IN_PROGRESS'} : null,
+    ...(mission.future_tasks || []).map(t => ({...t, _status:'PENDING'})),
+  ].filter(Boolean);
+
+  $('card-mission').innerHTML = `
+    <div class="card-label">Misión activa</div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+      <div style="font-size:15px;font-weight:600">${missionName}</div>
+      ${mission.is_complete ? badge('Completada','green') : badge(`${pct}% completado`, pct > 70 ? 'green' : 'blue')}
+    </div>
+    <div class="mission-progress-wrap">
+      <div class="mission-progress-bar" style="width:${pct}%"></div>
+    </div>
+    <div style="margin-top:12px;display:flex;flex-direction:column;gap:6px">
+      ${allTasks.slice(0,8).map(t => `
+        <div class="task-item">
+          ${taskIcon(t._status)}
+          <div>
+            <div class="task-name">${t.task?.name ?? t.name ?? '—'}</div>
+            <div class="task-type">${t.task?.type ?? t.type ?? ''}</div>
+          </div>
+        </div>
+      `).join('')}
+    </div>
+    <div class="card-sub" style="margin-top:10px">Actualizado ${ts(mission.timestamp)}</div>
+  `;
+}
+
+function renderNetwork(netmap) {
+  if (!netmap) {
+    $('card-network').innerHTML = `<div class="card-label">Mapa cargado</div><span class="no-data">Sin datos</span>`;
+    return;
+  }
+
+  const statusColor = { on_map:'green', localized_off_map:'yellow', loading_error:'red', unknown:'muted' }[netmap.status] ?? 'muted';
+  const map = netmap.map;
+
+  $('card-network').innerHTML = `
+    <div class="card-label">Mapa cargado</div>
+    <div style="margin:8px 0">${badge(netmap.status, statusColor)}</div>
+    ${map ? `
+      <div class="platform-row">
+        <span class="platform-key">Nombre</span>
+        <span class="platform-val">${map.name}</span>
+      </div>
+      <div class="platform-row">
+        <span class="platform-key">Revisión</span>
+        <span class="platform-val">${map.revision}</span>
+      </div>
+      <div class="platform-row">
+        <span class="platform-key">UID</span>
+        <span class="platform-val" style="font-size:10px">${map.uid?.slice(0,16)}…</span>
+      </div>
+      <div class="platform-row">
+        <span class="platform-key">Modificado</span>
+        <span class="platform-val">${map.modified_date ? new Date(map.modified_date).toLocaleDateString('es') : '—'}</span>
+      </div>
+    ` : '<span class="no-data">Sin mapa</span>'}
+  `;
+}
+
+function renderPlatform(platform) {
+  if (!platform) {
+    $('card-platform').innerHTML = `<div class="card-label">Plataforma</div><span class="no-data">Sin datos</span>`;
+    return;
+  }
+
+  const netColor  = platform.internet_connected === 'Online' ? 'green' : 'red';
+  const srvColor  = platform.server_status === 'Online' ? 'green' : 'red';
+
+  const today   = platform.today_metrics   || {};
+  const session = platform.session_metrics || {};
+
+  $('card-platform').innerHTML = `
+    <div class="card-label">Plataforma</div>
+    <div style="display:flex;gap:8px;margin:8px 0;flex-wrap:wrap">
+      ${badge(platform.internet_connected ?? '—', netColor)}
+      ${badge('Servidor ' + (platform.server_status ?? '—'), srvColor)}
+    </div>
+    <div class="platform-row">
+      <span class="platform-key">Generación</span>
+      <span class="platform-val">${platform.robot_generation ?? '—'}</span>
+    </div>
+    <div class="platform-row">
+      <span class="platform-key">Software</span>
+      <span class="platform-val">${platform.software_version ?? '—'}</span>
+    </div>
+    <div class="platform-row">
+      <span class="platform-key">IP</span>
+      <span class="platform-val">${platform.api_ip_address ?? '—'}</span>
+    </div>
+    <div class="platform-row">
+      <span class="platform-key">Disco disponible</span>
+      <span class="platform-val">${platform.disk_available ?? '—'} / ${platform.disk_size ?? '—'}</span>
+    </div>
+    <div style="margin-top:12px;display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <div>
+        <div class="stat-label">Hoy — Distancia</div>
+        <div class="stat-val">${today.distance ?? '—'}</div>
+      </div>
+      <div>
+        <div class="stat-label">Hoy — Tiempo en mov.</div>
+        <div class="stat-val">${today.time_moving ?? '—'}</div>
+      </div>
+      <div>
+        <div class="stat-label">Sesión — Tiempo ON</div>
+        <div class="stat-val">${session.time_on ?? '—'}</div>
+      </div>
+      <div>
+        <div class="stat-label">Sesión — Distancia</div>
+        <div class="stat-val">${session.distance ?? '—'}</div>
+      </div>
+    </div>
+  `;
+}
+
+// ── main render ──────────────────────────────────────────────────────────────
+
+function render(payload) {
+  const data    = payload.data?.data ?? {};
+  const status  = data.status ?? {};
+  const state   = data.state  ?? {};
+
+  renderBattery(status.battery);
+  renderLocalization(status.localization);
+  renderVelocity(status.velocity);
+  renderMotion(status.motion_governor);
+  renderObstacles(status.obstacle_handling);
+  renderDriveFlags(status.drive_system_stop_flags);
+  renderFailSafe(status.fail_safe);
+  renderMission(state.mission);
+  renderNetwork(status.network_map);
+  renderPlatform(status.platform);
+}
+
+// ── polling loop ─────────────────────────────────────────────────────────────
+
+async function fetchStatus() {
+  try {
+    const r = await fetch('/api/status');
+    const json = await r.json();
+
+    const dot   = $('dot');
+    const label = $('last-poll-label');
+
+    if (json.poll_error) {
+      dot.className = 'dot error';
+      label.textContent = `Error: ${json.poll_error.slice(0,50)}`;
+    } else {
+      dot.className = 'dot';
+      label.textContent = `Actualizado ${elapsed(json.last_poll)}`;
+      if (json.data) render(json);
+    }
+  } catch(e) {
+    $('dot').className = 'dot error';
+    $('last-poll-label').textContent = 'Sin conexión al servidor';
+  }
+}
+
+fetchStatus();
+setInterval(fetchStatus, 5000);
+</script>
+
+<!-- ── LEAFLET ── -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+// ═══════════════════════════════════════════════════════════════
+//  MAPA EN TIEMPO REAL
+// ═══════════════════════════════════════════════════════════════
+
+// Coordenadas por defecto: Fundo Valerie ICA (fallback si GPS no llega aún)
+const DEFAULT_LAT = -14.08;
+const DEFAULT_LNG = -75.73;
+
+// ── Inicializar mapa ─────────────────────────────────────────
+const map = L.map('burro-map', {
+  center: [DEFAULT_LAT, DEFAULT_LNG],
+  zoom: 17,
+  zoomControl: true,
+});
+
+// Capa satelital de Esri (sin API key necesaria)
+L.tileLayer(
+  'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+  {
+    attribution: 'Imagery © Esri',
+    maxZoom: 21,
+  }
+).addTo(map);
+
+// Etiquetas encima de la capa satelital
+L.tileLayer(
+  'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
+  { maxZoom: 21, opacity: 0.7 }
+).addTo(map);
+
+// ── Capas ────────────────────────────────────────────────────
+let pathsLayer = null;
+let destsLayer = null;
+let trailLayer = null;    // Polilínea de trayectoria reciente
+let burroMarker = null;   // Ícono del robot
+
+const trailCoords = [];   // Últimas N posiciones
+const TRAIL_MAX   = 80;
+
+// ── Ícono del burrito ─────────────────────────────────────────
+function makeBurroIcon(heading) {
+  return L.divIcon({
+    className: '',
+    html: `<div class="burro-marker-wrap" style="transform:rotate(${heading ?? 0}deg)">🤖</div>`,
+    iconSize:   [36, 36],
+    iconAnchor: [18, 18],
+    popupAnchor:[0, -20],
+  });
+}
+
+// ── Cargar paths y destinos ──────────────────────────────────
+let networkLoaded = false;
+
+async function loadNetwork() {
+  try {
+    const r    = await fetch('/api/network');
+    const data = await r.json();
+
+    if (!data.network_loaded) {
+      $('map-status').textContent = 'Esperando mapa del robot...';
+      return;
+    }
+
+    if (networkLoaded) return; // ya cargado, no repintar
+
+    // Rutas (paths)
+    if (data.paths && data.paths.features?.length) {
+      if (pathsLayer) map.removeLayer(pathsLayer);
+      pathsLayer = L.geoJSON(data.paths, {
+        style: {
+          color:     '#c6a44e',
+          weight:    2.5,
+          opacity:   0.85,
+          dashArray: '6 4',
+        },
+      }).addTo(map);
+    }
+
+    // Destinos (puntos)
+    if (data.destinations && data.destinations.features?.length) {
+      if (destsLayer) map.removeLayer(destsLayer);
+      destsLayer = L.geoJSON(data.destinations, {
+        pointToLayer: (feature, latlng) => {
+          const name = feature.properties?.name ?? 'Destino';
+          const marker = L.circleMarker(latlng, {
+            radius:      6,
+            fillColor:   '#58a6ff',
+            color:       '#ffffff',
+            weight:      2,
+            opacity:     1,
+            fillOpacity: 0.9,
+          });
+          marker.bindTooltip(name, {
+            permanent:  false,
+            direction:  'top',
+            className:  '',
+            offset:     [0, -8],
+          });
+          return marker;
+        },
+      }).addTo(map);
+
+      // Centrar mapa en los destinos si aún no hay posición del robot
+      if (!burroMarker) map.fitBounds(destsLayer.getBounds(), { padding: [30, 30] });
+    }
+
+    networkLoaded = true;
+    $('map-status').textContent = `Red: ${data.network_id?.slice(0,8)}… cargada`;
+
+  } catch(e) {
+    $('map-status').textContent = `Error cargando mapa: ${e.message}`;
+  }
+}
+
+// ── Actualizar posición del robot ─────────────────────────────
+function updateRobotPosition(localization) {
+  if (!localization) return;
+
+  const lat     = localization.fix?.latitude;
+  const lng     = localization.fix?.longitude;
+  const heading = localization.heading ?? 0;
+
+  if (lat == null || lng == null) return;
+
+  const latlng = [lat, lng];
+
+  // Trail
+  trailCoords.push(latlng);
+  if (trailCoords.length > TRAIL_MAX) trailCoords.shift();
+
+  if (trailLayer) map.removeLayer(trailLayer);
+  trailLayer = L.polyline(trailCoords, {
+    color:   '#3fb950',
+    weight:  2,
+    opacity: 0.7,
+  }).addTo(map);
+
+  // Marcador del robot
+  if (!burroMarker) {
+    burroMarker = L.marker(latlng, {
+      icon:        makeBurroIcon(heading),
+      zIndexOffset: 1000,
+    })
+    .bindPopup(`<b>Burro #8585</b><br>${lat.toFixed(6)}, ${lng.toFixed(6)}<br>Heading: ${heading.toFixed(1)}°`)
+    .addTo(map);
+
+    // Centrar mapa en el robot la primera vez
+    map.setView(latlng, 18);
+  } else {
+    burroMarker.setLatLng(latlng);
+    burroMarker.setIcon(makeBurroIcon(heading));
+    burroMarker.setPopupContent(
+      `<b>Burro #8585</b><br>${lat.toFixed(6)}, ${lng.toFixed(6)}<br>Heading: ${heading.toFixed(1)}°`
+    );
+  }
+}
+
+// ── Hook en el render principal ───────────────────────────────
+// Sobrescribir la función render para que también actualice el mapa
+const _renderOriginal = render;
+window.render = function(payload) {
+  _renderOriginal(payload);
+  const status = payload.data?.data?.status ?? {};
+  if (status.localization) updateRobotPosition(status.localization);
+};
+
+// ── Polling del mapa (más lento, la red no cambia seguido) ────
+loadNetwork();
+setInterval(loadNetwork, 30000);
+</script>
+</body>
+</html>
